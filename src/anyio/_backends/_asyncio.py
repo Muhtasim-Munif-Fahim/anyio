@@ -2642,8 +2642,14 @@ class AsyncIOBackend(AsyncBackend):
 
     @classmethod
     async def cancel_shielded_checkpoint(cls) -> None:
-        with CancelScope(shield=True):
+        # Avoid entering a CancelScope on the hot path: scope enter/exit is
+        # expensive relative to a bare sleep(0). Swallow only AnyIO
+        # cancellations so foreign CancelledError still propagates.
+        try:
             await sleep(0)
+        except CancelledError as exc:
+            if not is_anyio_cancellation(exc):
+                raise
 
     @classmethod
     async def sleep(cls, delay: float) -> None:
